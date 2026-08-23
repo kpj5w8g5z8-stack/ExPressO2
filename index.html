@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Flair Pro 2 Companion</title>
+  
+  <!-- PWA Settings für iPhone / iOS -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="EspressoApp">
+  <link rel="apple-touch-icon" href="https://fav.farm/☕">
+  <link rel="icon" href="https://fav.farm/☕">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <style>
+    body { -webkit-tap-highlight-color: transparent; }
+    .phase-pulse { animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen pb-12 font-sans antialiased">
+
+  <!-- Header -->
+  <header class="bg-slate-800 border-b border-slate-700 p-4 sticky top-0 z-50 flex justify-between items-center shadow-lg">
+    <h1 class="text-xl font-bold text-amber-500 flex items-center gap-2">
+      ☕ Espresso Dial-In
+    </h1>
+    <div class="flex gap-2">
+      <button onclick="exportData()" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-2 py-1 rounded">Export</button>
+      <button onclick="document.getElementById('importFile').click()" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-2 py-1 rounded">Import</button>
+      <input type="file" id="importFile" class="hidden" onchange="importData(event)" accept=".json">
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-md mx-auto p-4 space-y-6">
+
+    <!-- VIEW 1: BOHNEN-AUSWAHL & NEUE BOHNE -->
+    <section id="view-beans" class="space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-lg font-semibold text-slate-200">Aktive Bohnen</h2>
+        <button onclick="toggleElement('form-new-bean')" class="bg-amber-600 hover:bg-amber-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow">+ Neue Bohne</button>
+      </div>
+
+      <!-- Form: Neue Bohne -->
+      <form id="form-new-bean" onsubmit="saveNewBean(event)" class="hidden bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3">
+        <h3 class="font-bold text-amber-500">Neue Bohne anlegen</h3>
+        <div>
+          <label class="text-xs text-slate-400 block">Röster & Name</label>
+          <input type="text" id="bean-name" required class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" placeholder="z.B. Playground - Espresso Blend">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-xs text-slate-400 block">Röstgrad</label>
+            <select id="bean-roast" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
+              <option value="Hell">Hell</option>
+              <option value="Mittel" selected>Mittel</option>
+              <option value="Dunkel">Dunkel</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block">Arabica / Robusta (%)</label>
+            <div class="flex gap-1">
+              <input type="number" id="bean-arabica" placeholder="100" value="100" class="w-1/2 bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
+              <input type="number" id="bean-robusta" placeholder="0" value="0" class="w-1/2 bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-2 justify-end">
+          <button type="button" onclick="toggleElement('form-new-bean')" class="px-3 py-1 text-sm text-slate-400">Abbrechen</button>
+          <button type="submit" class="bg-amber-600 text-white px-4 py-1 rounded text-sm font-medium">Speichern</button>
+        </div>
+      </form>
+
+      <!-- Liste der Bohnen -->
+      <div id="beans-list" class="space-y-3"></div>
+
+      <!-- Archiv Header & Toggle -->
+      <div class="pt-4 border-t border-slate-800">
+        <button onclick="toggleElement('archived-beans-list')" class="text-xs text-slate-500 hover:text-slate-400">📦 Archivierte Bohnen anzeigen/verbergen</button>
+        <div id="archived-beans-list" class="hidden space-y-2 mt-2"></div>
+      </div>
+    </section>
+
+    <!-- VIEW 2: SETUP & TIMER (NUR SICHTBAR WENN BOHNE GEWÄHLT) -->
+    <section id="view-brew" class="hidden space-y-4">
+      <button onclick="showView('view-beans')" class="text-xs text-slate-400 hover:text-slate-200">← Zurück zur Bohnenauswahl</button>
+      
+      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+        <h2 id="active-bean-title" class="text-xl font-bold text-amber-500"></h2>
+        <p id="active-bean-meta" class="text-xs text-slate-400 mb-3"></p>
+
+        <!-- Empfohlene Einstellungen / Letzter Versuch -->
+        <div id="last-shot-recommendation" class="bg-slate-900/60 p-3 rounded-lg border border-amber-500/30 text-xs space-y-1 mb-4 hidden">
+          <div class="font-semibold text-amber-400">💡 Vorgeschlagenes Setup für diesen Brew:</div>
+          <div id="recommendation-text" class="text-slate-300"></div>
+        </div>
+
+        <!-- Inputs für den aktuellen Versuch -->
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div>
+            <label class="text-[10px] text-slate-400 block uppercase">Pulver (g)</label>
+            <input type="number" step="0.1" id="input-dose" value="18.0" class="w-full bg-slate-900 text-center font-bold text-lg border border-slate-700 rounded py-1">
+          </div>
+          <div>
+            <label class="text-[10px] text-slate-400 block uppercase">Ziel In Tasse (g)</label>
+            <input type="number" step="0.1" id="input-target-yield" value="36.0" class="w-full bg-slate-900 text-center font-bold text-lg border border-slate-700 rounded py-1">
+          </div>
+          <div>
+            <label class="text-[10px] text-slate-400 block uppercase">Sage Mühle (Klick)</label>
+            <input type="number" id="input-grind" value="10" class="w-full bg-slate-900 text-center font-bold text-lg border border-slate-700 rounded py-1">
+          </div>
+        </div>
+      </div>
+
+      <!-- TIMER DISPLAY & PHASEN-ANZEIGE -->
+      <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 text-center space-y-4">
+        
+        <!-- Phasen Indikator -->
+        <div id="phase-card" class="bg-slate-900 p-4 rounded-lg border border-slate-700 min-h-[100px] flex flex-col justify-center items-center">
+          <span id="phase-subtitle" class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Bereit</span>
+          <span id="phase-title" class="text-xl font-extrabold text-slate-200">Drücke Start zum Brühen</span>
+        </div>
+
+        <!-- Stoppuhr XXL -->
+        <div id="timer-display" class="text-6xl font-black font-mono tracking-tight text-amber-500">
+          00.0
+        </div>
+
+        <!-- Start Button -->
+        <button id="btn-start-timer" onclick="startBrewProcess()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-lg rounded-xl shadow-lg transition-transform active:scale-95">
+          🚀 Brew Starten (+5s Countdown)
+        </button>
+      </div>
+    </section>
+
+    <!-- VIEW 3: BRÜHERGEBNIS & SENSORIK (DIAGNOSE) -->
+    <section id="view-result" class="hidden space-y-4 bg-slate-800 p-5 rounded-xl border border-slate-700">
+      <h2 class="text-lg font-bold text-amber-500">Ergebnis erfassen</h2>
+      
+      <div class="grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <label class="text-xs text-slate-400 block">Tatsächliche Zeit (s)</label>
+          <input type="number" step="0.1" id="result-time" class="w-full bg-slate-900 border border-slate-700 rounded p-2 font-bold">
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 block">Tatsächlicher Ertrag (g)</label>
+          <input type="number" step="0.1" id="result-actual-yield" class="w-full bg-slate-900 border border-slate-700 rounded p-2 font-bold">
+        </div>
+      </div>
+
+      <div class="space-y-2 pt-2">
+        <label class="text-xs font-semibold text-slate-300 block">Wie hat der Espresso geschmeckt?</label>
+        
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="setFlavor('PERFECT')" class="flavor-btn p-3 bg-slate-900 hover:bg-emerald-950 border border-slate-700 hover:border-emerald-500 rounded-lg text-left">
+            <div class="font-bold text-emerald-400">✨ Perfekt / Geil</div>
+            <div class="text-[10px] text-slate-400">Süß & ausgewogen</div>
+          </button>
+          
+          <button onclick="setFlavor('SOUR')" class="flavor-btn p-3 bg-slate-900 hover:bg-amber-950 border border-slate-700 hover:border-amber-500 rounded-lg text-left">
+            <div class="font-bold text-amber-400">🍋 Zu Sauer</div>
+            <div class="text-[10px] text-slate-400">Zitrone, spitz, dünn</div>
+          </button>
+          
+          <button onclick="setFlavor('BITTER')" class="flavor-btn p-3 bg-slate-900 hover:bg-rose-950 border border-slate-700 hover:border-rose-500 rounded-lg text-left">
+            <div class="font-bold text-rose-400">🪵 Zu Bitter</div>
+            <div class="text-[10px] text-slate-400">Trocken, verbrannt</div>
+          </button>
+
+          <button onclick="setFlavor('BOTH')" class="flavor-btn p-3 bg-slate-900 hover:bg-purple-950 border border-slate-700 hover:border-purple-500 rounded-lg text-left">
+            <div class="font-bold text-purple-400">⚡ Sauer & Bitter</div>
+            <div class="text-[10px] text-slate-400">Unebenes Channeling</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="pt-4 flex justify-between gap-2 border-t border-slate-700">
+        <button onclick="saveBrew('SKIP')" class="w-1/2 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold rounded-lg">
+          Überspringen & Speichern
+        </button>
+        <button onclick="saveBrew('EVALUATED')" class="w-1/2 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg shadow">
+          Diagnose Speichern
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- JAVASCRIPT APP LOGIK -->
+  <script>
+    // App State
+    let appData = JSON.parse(localStorage.getItem('espresso_app_data')) || { beans: [] };
+    let activeBeanId = null;
+    let selectedFlavor = null;
+    let timerInterval = null;
+    let startTime = null;
+    let elapsedSeconds = 0;
+
+    // Save Data to LocalStorage
+    function saveData() {
+      localStorage.setItem('espresso_app_data', JSON.stringify(appData));
+      renderBeans();
+    }
+
+    // UI View Switcher
+    function showView(viewId) {
+      document.getElementById('view-beans').classList.add('hidden');
+      document.getElementById('view-brew').classList.add('hidden');
+      document.getElementById('view-result').classList.add('hidden');
+      document.getElementById(viewId).classList.remove('hidden');
+    }
+
+    function toggleElement(id) {
+      document.getElementById(id).classList.toggle('hidden');
+    }
+
+    // Bean Management
+    function saveNewBean(e) {
+      e.preventDefault();
+      const newBean = {
+        id: Date.now().toString(),
+        name: document.getElementById('bean-name').value,
+        roast: document.getElementById('bean-roast').value,
+        arabica: document.getElementById('bean-arabica').value || 100,
+        robusta: document.getElementById('bean-robusta').value || 0,
+        archived: false,
+        brews: []
+      };
+      appData.beans.push(newBean);
+      saveData();
+      document.getElementById('form-new-bean').reset();
+      toggleElement('form-new-bean');
+    }
+
+    function toggleArchiveBean(id) {
+      const bean = appData.beans.find(b => b.id === id);
+      if (bean) {
+        bean.archived = !bean.archived;
+        saveData();
+      }
+    }
+
+    function selectBean(id) {
+      activeBeanId = id;
+      const bean = appData.beans.find(b => b.id === id);
+      document.getElementById('active-bean-title').innerText = bean.name;
+      document.getElementById('active-bean-meta').innerText = `${bean.roast} | ${bean.arabica}% Arabica / ${bean.robusta}% Robusta`;
+
+      // Vorherigen Versuch laden
+      const recBox = document.getElementById('last-shot-recommendation');
+      if (bean.brews.length > 0) {
+        const lastBrew = bean.brews[bean.brews.length - 1];
+        document.getElementById('input-dose').value = lastBrew.nextDose || lastBrew.dose;
+        document.getElementById('input-target-yield').value = lastBrew.nextTargetYield || lastBrew.targetYield;
+        document.getElementById('input-grind').value = lastBrew.nextGrind || lastBrew.grind;
+
+        if (lastBrew.recommendationText) {
+          document.getElementById('recommendation-text').innerText = lastBrew.recommendationText;
+          recBox.classList.remove('hidden');
+        } else {
+          recBox.classList.add('hidden');
+        }
+      } else {
+        // Standards für neue Bohne
+        document.getElementById('input-dose').value = 18.0;
+        document.getElementById('input-target-yield').value = 36.0;
+        document.getElementById('input-grind').value = 10;
+        recBox.classList.add('hidden');
+      }
+
+      resetTimerUI();
+      showView('view-brew');
+    }
+
+    function renderBeans() {
+      const activeList = document.getElementById('beans-list');
+      const archivedList = document.getElementById('archived-beans-list');
+      activeList.innerHTML = '';
+      archivedList.innerHTML = '';
+
+      appData.beans.forEach(bean => {
+        const brewCount = bean.brews.length;
+        const html = `
+          <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center">
+            <div onclick="selectBean('${bean.id}')" class="cursor-pointer flex-1">
+              <h3 class="font-bold text-amber-500">${bean.name}</h3>
+              <p class="text-xs text-slate-400">${bean.roast} • ${brewCount} Versuche</p>
+            </div>
+            <button onclick="toggleArchiveBean('${bean.id}')" class="text-xs bg-slate-900 border border-slate-700 text-slate-400 hover:text-white px-2 py-1 rounded">
+              ${bean.archived ? 'Wiederherstellen' : 'Archiv'}
+            </button>
+          </div>
+        `;
+
+        if (bean.archived) {
+          archivedList.innerHTML += html;
+        } else {
+          activeList.innerHTML += html;
+        }
+      });
+    }
+
+    // TIMER & PHASEN-STEUERUNG
+    function resetTimerUI() {
+      clearInterval(timerInterval);
+      document.getElementById('timer-display').innerText = "00.0";
+      document.getElementById('phase-subtitle').innerText = "Bereit";
+      document.getElementById('phase-title').innerText = "Drücke Start zum Brühen";
+      document.getElementById('phase-card').className = "bg-slate-900 p-4 rounded-lg border border-slate-700 min-h-[100px] flex flex-col justify-center items-center";
+      document.getElementById('btn-start-timer').innerText = "🚀 Brew Starten (+5s Countdown)";
+      document.getElementById('btn-start-timer').disabled = false;
+    }
+
+    function startBrewProcess() {
+      const btn = document.getElementById('btn-start-timer');
+      btn.disabled = true;
+      btn.innerText = "Bezug läuft...";
+
+      let countdown = 5;
+      const phaseCard = document.getElementById('phase-card');
+      const phaseSubtitle = document.getElementById('phase-subtitle');
+      const phaseTitle = document.getElementById('phase-title');
+      const timerDisplay = document.getElementById('timer-display');
+
+      // Countdown Phase (5 Sekunden zum Ablegen des Smartphones)
+      phaseCard.className = "bg-amber-950/80 border-2 border-amber-500 p-4 rounded-lg min-h-[100px] flex flex-col justify-center items-center phase-pulse";
+      phaseSubtitle.innerText = "Achtung";
+      phaseTitle.innerText = "Smartphone ablegen!";
+      timerDisplay.innerText = `00.0`;
+
+      const countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+          phaseTitle.innerText = `Smartphone ablegen! (${countdown}s)`;
+        } else {
+          clearInterval(countdownInterval);
+          runBrewTimer();
+        }
+      }, 1000);
+    }
+
+    function runBrewTimer() {
+      startTime = Date.now();
+      const phaseCard = document.getElementById('phase-card');
+      const phaseSubtitle = document.getElementById('phase-subtitle');
+      const phaseTitle = document.getElementById('phase-title');
+      const timerDisplay = document.getElementById('timer-display');
+
+      timerInterval = setInterval(() => {
+        elapsedSeconds = (Date.now() - startTime) / 1000;
+        timerDisplay.innerText = elapsedSeconds.toFixed(1);
+
+        // Phasen-Steuerung nach Flair Pro 2 Workflow
+        if (elapsedSeconds <= 10) {
+          // Pre-Infusion Phase
+          phaseCard.className = "bg-blue-950/90 border-2 border-blue-500 p-4 rounded-lg min-h-[100px] flex flex-col justify-center items-center";
+          phaseSubtitle.innerText = "PHASE 1: PRE-INFUSION";
+          phaseTitle.innerText = "💧 Sanft 1.5 - 2 BAR drücken";
+        } else if (elapsedSeconds <= 25) {
+          // Hauptdruck Phase
+          phaseCard.className = "bg-emerald-950/90 border-2 border-emerald-500 p-4 rounded-lg min-h-[100px] flex flex-col justify-center items-center";
+          phaseSubtitle.innerText = "PHASE 2: HAUPTEXTRAKTION";
+          phaseTitle.innerText = "🚀 Druck auf 8 BAR steigern";
+        } else if (elapsedSeconds <= 38) {
+          // Tapering Phase
+          phaseCard.className = "bg-amber-950/90 border-2 border-amber-500 p-4 rounded-lg min-h-[100px] flex flex-col justify-center items-center";
+          phaseSubtitle.innerText = "PHASE 3: TAPERING (SENKEN)";
+          phaseTitle.innerText = "📉 Druck langsam auf 4-5 BAR senken";
+        } else {
+          // Zielzeit überschritten
+          phaseCard.className = "bg-rose-950/90 border-2 border-rose-500 p-4 rounded-lg min-h-[100px] flex flex-col justify-center items-center";
+          phaseSubtitle.innerText = "PHASE 4: FERTIG / STOPP";
+          phaseTitle.innerText = "🛑 Bezug jetzt beenden!";
+        }
+      }, 100);
+
+      // Ein zweiter Klick beendet den Bezug sofort
+      const btn = document.getElementById('btn-start-timer');
+      btn.disabled = false;
+      btn.innerText = "🛑 BEZUG BEENDEN";
+      btn.onclick = finishBrewTimer;
+    }
+
+    function finishBrewTimer() {
+      clearInterval(timerInterval);
+      document.getElementById('result-time').value = elapsedSeconds.toFixed(1);
+      document.getElementById('result-actual-yield').value = document.getElementById('input-target-yield').value;
+      
+      // Reset Button Event Listener
+      const btn = document.getElementById('btn-start-timer');
+      btn.onclick = startBrewProcess;
+
+      showView('view-result');
+    }
+
+    // SENSORIK & DYNAMISCHE DIAGNOSE
+    function setFlavor(flavor) {
+      selectedFlavor = flavor;
+      document.querySelectorAll('.flavor-btn').forEach(b => b.classList.remove('ring-2', 'ring-amber-500'));
+      event.currentTarget.classList.add('ring-2', 'ring-amber-500');
+    }
+
+    function saveBrew(mode) {
+      const bean = appData.beans.find(b => b.id === activeBeanId);
+      const dose = parseFloat(document.getElementById('input-dose').value);
+      const targetYield = parseFloat(document.getElementById('input-target-yield').value);
+      const grind = parseInt(document.getElementById('input-grind').value);
+      const actualTime = parseFloat(document.getElementById('result-time').value);
+      const actualYield = parseFloat(document.getElementById('result-actual-yield').value);
+
+      let brewRecord = {
+        date: new Date().toISOString(),
+        dose, targetYield, grind, actualTime, actualYield,
+        flavor: mode === 'SKIP' ? 'SKIPPED' : selectedFlavor,
+        nextDose: dose,
+        nextTargetYield: targetYield,
+        nextGrind: grind,
+        recommendationText: ""
+      };
+
+      // WORKFLOW-ASSISTENT LOGIK
+      if (mode === 'EVALUATED' && selectedFlavor) {
+        if (selectedFlavor === 'PERFECT') {
+          brewRecord.recommendationText = "Perfektes Setup! Alle Parameter beibehalten.";
+        } else if (selectedFlavor === 'SOUR') {
+          brewRecord.nextTargetYield = targetYield + 4; // Ratio verlängern
+          brewRecord.recommendationText = `Espresso war zu sauer. Ziel-Ertrag erhöht auf ${brewRecord.nextTargetYield}g (mehr Süße extrahieren). Falls immer noch sauer: Mühle 1 Klick feiner stellen.`;
+        } else if (selectedFlavor === 'BITTER') {
+          brewRecord.nextTargetYield = Math.max(18, targetYield - 4); // Ratio verkürzen
+          brewRecord.recommendationText = `Espresso war zu bitter. Ziel-Ertrag reduziert auf ${brewRecord.nextTargetYield}g. Falls immer noch bitter: Mühle 1 Klick gröber stellen.`;
+        } else if (selectedFlavor === 'BOTH') {
+          brewRecord.recommendationText = "Sauer & Bitter zugleich = Channeling! Nutze die WDT-Nadel gründlicher und mache 10s sanfte Pre-Infusion.";
+        }
+      }
+
+      bean.brews.push(brewRecord);
+      saveData();
+      selectedFlavor = null;
+      selectBean(activeBeanId); // UI aktualisieren
+    }
+
+    // EXPORT & IMPORT
+    function exportData() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `espresso_backup_${new Date().toISOString().slice(0,10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    function importData(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        try {
+          appData = JSON.parse(event.target.result);
+          saveData();
+          alert("Daten erfolgreich importiert!");
+        } catch(err) {
+          alert("Fehler beim Importieren der Datei!");
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // App Startup
+    renderBeans();
+  </script>
+</body>
+</html>
