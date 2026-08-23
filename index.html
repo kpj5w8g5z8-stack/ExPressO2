@@ -56,9 +56,9 @@
           <div>
             <label class="text-xs text-slate-400 block">Röstgrad</label>
             <select id="bean-roast" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white">
-              <option value="Hell">Hell</option>
-              <option value="Mittel" selected>Mittel</option>
-              <option value="Dunkel">Dunkel</option>
+              <option value="Hell">Hell (Fruchtig)</option>
+              <option value="Mittel" selected>Mittel (Allrounder)</option>
+              <option value="Dunkel">Dunkel (Klassisch)</option>
             </select>
           </div>
           <div>
@@ -89,18 +89,21 @@
     <section id="view-brew" class="hidden space-y-4">
       <button onclick="showView('view-beans')" class="text-xs text-slate-400 hover:text-slate-200">← Zurück zur Bohnenauswahl</button>
       
-      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-2">
         <h2 id="active-bean-title" class="text-xl font-bold text-amber-500"></h2>
-        <p id="active-bean-meta" class="text-xs text-slate-400 mb-3"></p>
+        <p id="active-bean-meta" class="text-xs text-slate-400"></p>
+        
+        <!-- Röstgrad-Druck-Hinweis -->
+        <div id="bean-pressure-hint" class="bg-blue-950/60 border border-blue-500/30 p-2.5 rounded-lg text-xs text-blue-300"></div>
 
         <!-- Empfohlene Einstellungen / Letzter Versuch -->
-        <div id="last-shot-recommendation" class="bg-slate-900/60 p-3 rounded-lg border border-amber-500/30 text-xs space-y-1 mb-4 hidden">
+        <div id="last-shot-recommendation" class="bg-slate-900/60 p-3 rounded-lg border border-amber-500/30 text-xs space-y-1 hidden">
           <div class="font-semibold text-amber-400">💡 Vorgeschlagenes Setup für diesen Brew:</div>
           <div id="recommendation-text" class="text-slate-300"></div>
         </div>
 
         <!-- Inputs für den aktuellen Versuch -->
-        <div class="grid grid-cols-3 gap-2 text-center">
+        <div class="grid grid-cols-3 gap-2 text-center pt-2">
           <div>
             <label class="text-[10px] text-slate-400 block uppercase">Pulver (g)</label>
             <input type="number" step="0.1" id="input-dose" value="18.0" class="w-full bg-slate-900 text-center font-bold text-lg border border-slate-700 rounded py-1">
@@ -135,20 +138,33 @@
           🚀 Brew Starten (+5s Countdown)
         </button>
       </div>
+
+      <!-- HISTORIE VERLAUF ANZEIGE -->
+      <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3">
+        <div class="flex justify-between items-center">
+          <h3 class="font-bold text-slate-200 text-sm">📜 Bisheriger Verlauf</h3>
+          <span id="history-count" class="text-xs text-slate-400">0 Versuche</span>
+        </div>
+        <div id="history-list" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
+      </div>
     </section>
 
     <!-- VIEW 3: BRÜHERGEBNIS & SENSORIK (DIAGNOSE) -->
     <section id="view-result" class="hidden space-y-4 bg-slate-800 p-5 rounded-xl border border-slate-700">
       <h2 class="text-lg font-bold text-amber-500">Ergebnis erfassen</h2>
       
-      <div class="grid grid-cols-2 gap-3 text-sm">
+      <div class="grid grid-cols-3 gap-2 text-sm">
         <div>
-          <label class="text-xs text-slate-400 block">Tatsächliche Zeit (s)</label>
+          <label class="text-xs text-slate-400 block">Zeit (s)</label>
           <input type="number" step="0.1" id="result-time" class="w-full bg-slate-900 border border-slate-700 rounded p-2 font-bold">
         </div>
         <div>
-          <label class="text-xs text-slate-400 block">Tatsächlicher Ertrag (g)</label>
+          <label class="text-xs text-slate-400 block">Ertrag (g)</label>
           <input type="number" step="0.1" id="result-actual-yield" class="w-full bg-slate-900 border border-slate-700 rounded p-2 font-bold">
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 block">Max Druck (bar)</label>
+          <input type="number" step="0.5" id="result-pressure" value="8.0" class="w-full bg-slate-900 border border-slate-700 rounded p-2 font-bold text-center">
         </div>
       </div>
 
@@ -201,13 +217,11 @@
     let startTime = null;
     let elapsedSeconds = 0;
 
-    // Save Data to LocalStorage
     function saveData() {
       localStorage.setItem('espresso_app_data', JSON.stringify(appData));
       renderBeans();
     }
 
-    // UI View Switcher
     function showView(viewId) {
       document.getElementById('view-beans').classList.add('hidden');
       document.getElementById('view-brew').classList.add('hidden');
@@ -219,7 +233,6 @@
       document.getElementById(id).classList.toggle('hidden');
     }
 
-    // Bean Management
     function saveNewBean(e) {
       e.preventDefault();
       const newBean = {
@@ -249,15 +262,26 @@
       activeBeanId = id;
       const bean = appData.beans.find(b => b.id === id);
       document.getElementById('active-bean-title').innerText = bean.name;
-      document.getElementById('active-bean-meta').innerText = `${bean.roast} | ${bean.arabica}% Arabica / ${bean.robusta}% Robusta`;
+      document.getElementById('active-bean-meta').innerText = `${bean.roast} Röstung | ${bean.arabica}% Arabica / ${bean.robusta}% Robusta`;
 
-      // Vorherigen Versuch laden
+      // Druck-Empfehlung basierend auf Röstgrad anzeigen
+      const pressureHint = document.getElementById('bean-pressure-hint');
+      if (bean.roast === 'Dunkel') {
+        pressureHint.innerHTML = "🎯 <b>Druck-Tipp (Dunkel):</b> Halte den Maximaldruck bei <b>6–7 bar</b>, um bittere Röstnoten zu vermeiden.";
+      } else if (bean.roast === 'Hell') {
+        pressureHint.innerHTML = "🎯 <b>Druck-Tipp (Hell):</b> Nutze volle <b>8–9 bar</b> mit einer längeren Pre-Infusion (10-12s), um die Helligkeit zu zähmen.";
+      } else {
+        pressureHint.innerHTML = "🎯 <b>Druck-Tipp (Mittel):</b> Der Standardbereich liegt bei fließenden <b>8 bar</b>.";
+      }
+
+      // Letzter Versuch / Empfehlung laden
       const recBox = document.getElementById('last-shot-recommendation');
       if (bean.brews.length > 0) {
         const lastBrew = bean.brews[bean.brews.length - 1];
         document.getElementById('input-dose').value = lastBrew.nextDose || lastBrew.dose;
         document.getElementById('input-target-yield').value = lastBrew.nextTargetYield || lastBrew.targetYield;
         document.getElementById('input-grind').value = lastBrew.nextGrind || lastBrew.grind;
+        document.getElementById('result-pressure').value = lastBrew.pressure || 8.0;
 
         if (lastBrew.recommendationText) {
           document.getElementById('recommendation-text').innerText = lastBrew.recommendationText;
@@ -266,15 +290,55 @@
           recBox.classList.add('hidden');
         }
       } else {
-        // Standards für neue Bohne
         document.getElementById('input-dose').value = 18.0;
         document.getElementById('input-target-yield').value = 36.0;
         document.getElementById('input-grind').value = 10;
+        document.getElementById('result-pressure').value = bean.roast === 'Dunkel' ? 6.5 : 8.0;
         recBox.classList.add('hidden');
       }
 
+      renderHistory(bean);
       resetTimerUI();
       showView('view-brew');
+    }
+
+    function renderHistory(bean) {
+      const historyList = document.getElementById('history-list');
+      const historyCount = document.getElementById('history-count');
+      historyList.innerHTML = '';
+      historyCount.innerText = `${bean.brews.length} Versuche`;
+
+      if (bean.brews.length === 0) {
+        historyList.innerHTML = '<div class="text-xs text-slate-500 italic text-center py-2">Noch keine Versuche aufgezeichnet.</div>';
+        return;
+      }
+
+      [...bean.brews].reverse().forEach((brew, idx) => {
+        const brewNum = bean.brews.length - idx;
+        const dateStr = new Date(brew.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        
+        let flavorBadge = '<span class="bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded text-[10px]">Übersprungen</span>';
+        if (brew.flavor === 'PERFECT') flavorBadge = '<span class="bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded text-[10px] font-bold">✨ Perfekt</span>';
+        if (brew.flavor === 'SOUR') flavorBadge = '<span class="bg-amber-950 text-amber-400 border border-amber-800 px-1.5 py-0.5 rounded text-[10px] font-bold">🍋 Zu Sauer</span>';
+        if (brew.flavor === 'BITTER') flavorBadge = '<span class="bg-rose-950 text-rose-400 border border-rose-800 px-1.5 py-0.5 rounded text-[10px] font-bold">🪵 Zu Bitter</span>';
+        if (brew.flavor === 'BOTH') flavorBadge = '<span class="bg-purple-950 text-purple-400 border border-purple-800 px-1.5 py-0.5 rounded text-[10px] font-bold">⚡ Sauer & Bitter</span>';
+
+        historyList.innerHTML += `
+          <div class="bg-slate-900/80 p-2.5 rounded-lg border border-slate-700/60 text-xs space-y-1">
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-amber-500">#${brewNum} <span class="text-[10px] font-normal text-slate-500">(${dateStr})</span></span>
+              ${flavorBadge}
+            </div>
+            <div class="grid grid-cols-4 gap-1 text-[11px] text-slate-300 pt-1">
+              <div><span class="text-slate-500 block text-[9px]">DOSE</span>${brew.dose}g</div>
+              <div><span class="text-slate-500 block text-[9px]">YIELD</span>${brew.actualYield}g</div>
+              <div><span class="text-slate-500 block text-[9px]">ZEIT</span>${brew.actualTime}s</div>
+              <div><span class="text-slate-500 block text-[9px]">DRUCK</span>${brew.pressure || 8} bar</div>
+            </div>
+            ${brew.recommendationText ? `<div class="text-[10px] text-slate-400 bg-slate-950/50 p-1.5 rounded border border-slate-800/80 mt-1">💡 ${brew.recommendationText}</div>` : ''}
+          </div>
+        `;
+      });
     }
 
     function renderBeans() {
@@ -305,7 +369,6 @@
       });
     }
 
-    // TIMER & PHASEN-STEUERUNG
     function resetTimerUI() {
       clearInterval(timerInterval);
       document.getElementById('timer-display').innerText = "00.0";
@@ -327,7 +390,6 @@
       const phaseTitle = document.getElementById('phase-title');
       const timerDisplay = document.getElementById('timer-display');
 
-      // Countdown Phase (5 Sekunden zum Ablegen des Smartphones)
       phaseCard.className = "bg-amber-950/80 border-2 border-amber-500 p-4 rounded-lg min-h-[100px] flex flex-col justify-center items-center phase-pulse";
       phaseSubtitle.innerText = "Achtung";
       phaseTitle.innerText = "Smartphone ablegen!";
@@ -355,31 +417,25 @@
         elapsedSeconds = (Date.now() - startTime) / 1000;
         timerDisplay.innerText = elapsedSeconds.toFixed(1);
 
-        // Phasen-Steuerung nach Flair Pro 2 Workflow
         if (elapsedSeconds <= 10) {
-          // Pre-Infusion Phase
           phaseCard.className = "bg-blue-950/90 border-2 border-blue-500 p-4 rounded-lg min-h-[100px] flex flex-col justify-center items-center";
           phaseSubtitle.innerText = "PHASE 1: PRE-INFUSION";
           phaseTitle.innerText = "💧 Sanft 1.5 - 2 BAR drücken";
         } else if (elapsedSeconds <= 25) {
-          // Hauptdruck Phase
           phaseCard.className = "bg-emerald-950/90 border-2 border-emerald-500 p-4 rounded-lg min-h-[100px] flex flex-col justify-center items-center";
           phaseSubtitle.innerText = "PHASE 2: HAUPTEXTRAKTION";
           phaseTitle.innerText = "🚀 Druck auf 8 BAR steigern";
         } else if (elapsedSeconds <= 38) {
-          // Tapering Phase
           phaseCard.className = "bg-amber-950/90 border-2 border-amber-500 p-4 rounded-lg min-h-[100px] flex flex-col justify-center items-center";
           phaseSubtitle.innerText = "PHASE 3: TAPERING (SENKEN)";
           phaseTitle.innerText = "📉 Druck langsam auf 4-5 BAR senken";
         } else {
-          // Zielzeit überschritten
           phaseCard.className = "bg-rose-950/90 border-2 border-rose-500 p-4 rounded-lg min-h-[100px] flex flex-col justify-center items-center";
           phaseSubtitle.innerText = "PHASE 4: FERTIG / STOPP";
           phaseTitle.innerText = "🛑 Bezug jetzt beenden!";
         }
       }, 100);
 
-      // Ein zweiter Klick beendet den Bezug sofort
       const btn = document.getElementById('btn-start-timer');
       btn.disabled = false;
       btn.innerText = "🛑 BEZUG BEENDEN";
@@ -391,14 +447,12 @@
       document.getElementById('result-time').value = elapsedSeconds.toFixed(1);
       document.getElementById('result-actual-yield').value = document.getElementById('input-target-yield').value;
       
-      // Reset Button Event Listener
       const btn = document.getElementById('btn-start-timer');
       btn.onclick = startBrewProcess;
 
       showView('view-result');
     }
 
-    // SENSORIK & DYNAMISCHE DIAGNOSE
     function setFlavor(flavor) {
       selectedFlavor = flavor;
       document.querySelectorAll('.flavor-btn').forEach(b => b.classList.remove('ring-2', 'ring-amber-500'));
@@ -412,10 +466,11 @@
       const grind = parseInt(document.getElementById('input-grind').value);
       const actualTime = parseFloat(document.getElementById('result-time').value);
       const actualYield = parseFloat(document.getElementById('result-actual-yield').value);
+      const pressure = parseFloat(document.getElementById('result-pressure').value);
 
       let brewRecord = {
         date: new Date().toISOString(),
-        dose, targetYield, grind, actualTime, actualYield,
+        dose, targetYield, grind, actualTime, actualYield, pressure,
         flavor: mode === 'SKIP' ? 'SKIPPED' : selectedFlavor,
         nextDose: dose,
         nextTargetYield: targetYield,
@@ -423,28 +478,26 @@
         recommendationText: ""
       };
 
-      // WORKFLOW-ASSISTENT LOGIK
       if (mode === 'EVALUATED' && selectedFlavor) {
         if (selectedFlavor === 'PERFECT') {
           brewRecord.recommendationText = "Perfektes Setup! Alle Parameter beibehalten.";
         } else if (selectedFlavor === 'SOUR') {
-          brewRecord.nextTargetYield = targetYield + 4; // Ratio verlängern
-          brewRecord.recommendationText = `Espresso war zu sauer. Ziel-Ertrag erhöht auf ${brewRecord.nextTargetYield}g (mehr Süße extrahieren). Falls immer noch sauer: Mühle 1 Klick feiner stellen.`;
+          brewRecord.nextTargetYield = targetYield + 4;
+          brewRecord.recommendationText = `Zu sauer: Ziel-Ertrag erhöht auf ${brewRecord.nextTargetYield}g. Falls immer noch sauer: Mühle 1 Klick feiner stellen.`;
         } else if (selectedFlavor === 'BITTER') {
-          brewRecord.nextTargetYield = Math.max(18, targetYield - 4); // Ratio verkürzen
-          brewRecord.recommendationText = `Espresso war zu bitter. Ziel-Ertrag reduziert auf ${brewRecord.nextTargetYield}g. Falls immer noch bitter: Mühle 1 Klick gröber stellen.`;
+          brewRecord.nextTargetYield = Math.max(18, targetYield - 4);
+          brewRecord.recommendationText = `Zu bitter: Ertrag auf ${brewRecord.nextTargetYield}g reduziert. Tipp: Versuche beim nächsten Mal max. 6–7 bar Druck, falls du zu hart gedrückt hast!`;
         } else if (selectedFlavor === 'BOTH') {
-          brewRecord.recommendationText = "Sauer & Bitter zugleich = Channeling! Nutze die WDT-Nadel gründlicher und mache 10s sanfte Pre-Infusion.";
+          brewRecord.recommendationText = "Sauer & Bitter = Channeling! WDT-Nadel gründlicher nutzen und 10s sanfte Pre-Infusion machen.";
         }
       }
 
       bean.brews.push(brewRecord);
       saveData();
       selectedFlavor = null;
-      selectBean(activeBeanId); // UI aktualisieren
+      selectBean(activeBeanId);
     }
 
-    // EXPORT & IMPORT
     function exportData() {
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData, null, 2));
       const downloadAnchor = document.createElement('a');
@@ -471,7 +524,6 @@
       reader.readAsText(file);
     }
 
-    // App Startup
     renderBeans();
   </script>
 </body>
